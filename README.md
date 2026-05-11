@@ -51,7 +51,7 @@ The stock `linux-firmware` package (as of early 2024) is missing the KBL AVS top
 ## Usage
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pixelbook-go-linux
+git clone https://github.com/LBSiUK/pixelbook-go-linux
 cd pixelbook-go-linux
 chmod +x setup.sh
 ./setup.sh

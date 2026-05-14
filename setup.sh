@@ -45,6 +45,22 @@ fi
 
 require_sudo
 
+# ── Update-check preference (asked once, before any changes) ───────────────────
+
+echo
+echo "── Update notifications ──────────────────────────────────────────────────"
+echo "  Pixelbook Go Tools can check once per day for new releases and notify"
+echo "  you via desktop notification when an update is available."
+echo
+read -rp "  Enable automatic update checks? [Y/n] " _upd_response
+if [[ "$_upd_response" =~ ^[Nn]$ ]]; then
+    _AUTO_UPDATE="false"
+    info "Auto-update checks disabled."
+else
+    _AUTO_UPDATE="true"
+    info "Auto-update checks enabled."
+fi
+
 # ── 1. Keyboard hotkeys ────────────────────────────────────────────────────────
 
 echo
@@ -148,19 +164,42 @@ if systemctl --user is-active --quiet wireplumber 2>/dev/null; then
     amixer -c MAX98373 sset 'Right Digital' 127              >/dev/null 2>&1 || true
     sudo alsactl store                                        >/dev/null 2>&1 && ok "ALSA state saved" || true
 
-    # Set Built-in Speakers as the default sink
-    sleep 1
-    SPEAKER_ID=$(wpctl status 2>/dev/null | awk '/Built-in Speakers/ { print $2+0; exit }')
-    if [[ -n "$SPEAKER_ID" && "$SPEAKER_ID" -gt 0 ]]; then
-        wpctl set-default "$SPEAKER_ID" && ok "Built-in Speakers set as default output"
-    else
-        warn "Could not auto-select Built-in Speakers — set it manually in Sound Settings after reboot"
-    fi
+    # Default sink will be set to Speaker EQ in the PipeWire EQ section below
 else
     warn "WirePlumber not running in this session — audio changes will take effect after reboot"
 fi
 
-# ── 6. GNOME keyboard backlight shortcuts ──────────────────────────────────────
+# ── 6. Audio: PipeWire speaker EQ ─────────────────────────────────────────────
+
+echo
+echo "── Audio: PipeWire speaker EQ ────────────────────────────────────────────"
+
+EQ_SRC="$SCRIPT_DIR/pipewire/99-speaker-eq.conf"
+EQ_DEST="$HOME/.config/pipewire/pipewire.conf.d/99-speaker-eq.conf"
+
+mkdir -p "$(dirname "$EQ_DEST")"
+if cp "$EQ_SRC" "$EQ_DEST"; then
+    ok "Installed speaker EQ → $EQ_DEST"
+else
+    fail "Failed to install speaker EQ"
+fi
+
+if systemctl --user is-active --quiet pipewire 2>/dev/null; then
+    info "Reloading PipeWire..."
+    systemctl --user restart pipewire pipewire-pulse
+    sleep 3
+
+    EQ_ID=$(wpctl status 2>/dev/null | awk '/Speaker EQ/ { gsub(/\./, "", $2); print $2+0; exit }')
+    if [[ -n "$EQ_ID" && "$EQ_ID" -gt 0 ]]; then
+        wpctl set-default "$EQ_ID" && ok "Speaker EQ set as default output"
+    else
+        warn "Speaker EQ node not found — set it manually in Sound Settings after reboot"
+    fi
+else
+    warn "PipeWire not running — EQ will load on next login"
+fi
+
+# ── 7. GNOME keyboard backlight shortcuts ──────────────────────────────────────
 
 echo
 echo "── Keyboard backlight shortcuts (GNOME) ──────────────────────────────────"
@@ -171,6 +210,69 @@ if command -v gsettings &>/dev/null; then
     ok "Alt + Brightness Up/Down → keyboard backlight (with OSD)"
 else
     warn "gsettings not found — skipping GNOME keyboard backlight shortcuts"
+fi
+
+# ── 8. Update checker ─────────────────────────────────────────────────────────
+
+echo
+echo "── Update checker ────────────────────────────────────────────────────────"
+
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+mkdir -p "$SYSTEMD_USER_DIR"
+
+sed "s|REPO_DIR|$SCRIPT_DIR|g" \
+    "$SCRIPT_DIR/systemd/pixelbook-go-tools-update.service" \
+    > "$SYSTEMD_USER_DIR/pixelbook-go-tools-update.service" \
+    && ok "Installed update service" || fail "Failed to install update service"
+
+cp "$SCRIPT_DIR/systemd/pixelbook-go-tools-update.timer" \
+   "$SYSTEMD_USER_DIR/pixelbook-go-tools-update.timer" \
+    && ok "Installed update timer" || fail "Failed to install update timer"
+
+systemctl --user daemon-reload 2>/dev/null || true
+
+/usr/bin/python3 "$SCRIPT_DIR/updater.py" \
+    --set-auto-update "$_AUTO_UPDATE" 2>/dev/null \
+    && ok "Saved update preference" || warn "Could not save update preference"
+
+if [[ "$_AUTO_UPDATE" == "true" ]]; then
+    if systemctl --user enable --now pixelbook-go-tools-update.timer 2>/dev/null; then
+        ok "Update timer enabled and started"
+    else
+        warn "Could not start update timer — will activate on next login"
+    fi
+else
+    systemctl --user disable pixelbook-go-tools-update.timer 2>/dev/null || true
+    info "Update timer disabled"
+fi
+
+# ── 9. Desktop entry ──────────────────────────────────────────────────────────
+
+echo
+echo "── Desktop entry ─────────────────────────────────────────────────────────"
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+mkdir -p "$DESKTOP_DIR"
+
+cat > "$DESKTOP_DIR/pixelbook-go-tools.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Pixelbook Go Tools
+Comment=Speaker EQ and update manager for Pixelbook Go
+Exec=/usr/bin/python3 $SCRIPT_DIR/pixelbook-tools.py
+Icon=audio-equalizer
+Terminal=false
+Categories=Settings;Audio;
+EOF
+
+# Remove old entry if present
+rm -f "$DESKTOP_DIR/pixelbook-eq.desktop"
+
+if update-desktop-database "$DESKTOP_DIR" 2>/dev/null; then
+    ok "Desktop entry installed (Pixelbook Go Tools)"
+else
+    ok "Desktop entry installed (Pixelbook Go Tools)"
 fi
 
 # ── Summary ────────────────────────────────────────────────────────────────────

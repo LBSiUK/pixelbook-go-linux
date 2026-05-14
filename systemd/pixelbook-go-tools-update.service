@@ -1,0 +1,9 @@
+[Unit]
+Description=Pixelbook Go Tools — update check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Path is substituted by setup.sh at install time
+ExecStart=/usr/bin/python3 REPO_DIR/updater.py

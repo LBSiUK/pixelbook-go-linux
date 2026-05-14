@@ -1,6 +1,6 @@
 # Pixelbook Go (Atlas) Linux Setup
 
-Fixes keyboard hotkeys and internal audio for the **Google Pixelbook Go** running Ubuntu 24.04 or Zorin OS 18.x with kernel 6.17+. Also includes **Pixelbook Go Tools** — a GTK4 app for speaker EQ and update management.
+Fixes keyboard hotkeys and gets internal audio working for the **Google Pixelbook Go** running Ubuntu 24.04 or Zorin OS 18.x with kernel 6.17+. Also includes **Pixelbook Go Tools** — a GTK4 app for speaker EQ and automatic updates in case I add to this.
 
 ## What it fixes
 
@@ -40,7 +40,7 @@ The stock `linux-firmware` package (as of early 2024) is missing the KBL AVS top
 | `pipewire/99-speaker-eq.conf` | 8-band PipeWire filter-chain EQ routed to speakers only |
 
 ### Speaker EQ
-A PipeWire filter-chain applies an 8-band graphic EQ to the built-in speakers. HDMI audio and headphones are unaffected. The default curve has a gentle warm tilt; you can adjust it live with the **Pixelbook Go Tools** app.
+A PipeWire filter-chain applies an 8-band graphic EQ to the built-in speakers. HDMI audio and headphones are unaffected. The default curve is meant to make the Pixelbook's speakers sound closer to how they did under ChromeOS (I believe Google uses a software EQ), however you'll probably want to adjust it which you can do with the **Pixelbook Go Tools** app. You can disable the EQ by selecting the non-EQ'd output device in GNOME.
 
 ## Pixelbook Go Tools
 
@@ -68,7 +68,7 @@ python3 pixelbook-tools.py
 
 - Google Pixelbook Go (board codename **Atlas**)
 - Ubuntu 24.04 / Zorin OS 18.x (or any Ubuntu 24.04-based distro)
-- Kernel **6.17** (the AVS topology files in `firmware/` are tested against this kernel)
+- Kernel **6.17** (the AVS topology files in `firmware/` are tested against this kernel, others may work but they're unsupported)
 - MrChromebox coreboot firmware (standard UEFI boot)
 - GNOME desktop (for keyboard backlight shortcut and app)
 - `python3-gi` with GTK4 bindings (pre-installed on Ubuntu/Zorin)

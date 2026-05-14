@@ -1,6 +1,6 @@
 # Pixelbook Go (Atlas) Linux Setup
 
-Fixes keyboard hotkeys and internal audio for the **Google Pixelbook Go** running Ubuntu 24.04 or Zorin OS 18.x with kernel 6.17+.
+Fixes keyboard hotkeys and internal audio for the **Google Pixelbook Go** running Ubuntu 24.04 or Zorin OS 18.x with kernel 6.17+. Also includes **Pixelbook Go Tools** — a GTK4 app for speaker EQ and update management.
 
 ## What it fixes
 
@@ -37,6 +37,32 @@ The stock `linux-firmware` package (as of early 2024) is missing the KBL AVS top
 | `ucm/avs_max98373/` | UCM profile: sets DSP volume, stereo channel routing, balances both speaker amps |
 | `ucm/avs_da7219/` | UCM profile: enables headphone DAC path and headset mic on jack detection |
 | `wireplumber/` | Prioritises built-in speakers over HDMI; labels devices correctly |
+| `pipewire/99-speaker-eq.conf` | 8-band PipeWire filter-chain EQ routed to speakers only |
+
+### Speaker EQ
+A PipeWire filter-chain applies an 8-band graphic EQ to the built-in speakers. HDMI audio and headphones are unaffected. The default curve has a gentle warm tilt; you can adjust it live with the **Pixelbook Go Tools** app.
+
+## Pixelbook Go Tools
+
+A GTK4 desktop app installed to your applications menu.
+
+**Equaliser tab** — adjust the speaker EQ without touching any config files:
+- 8 bands: 125 Hz, 250 Hz, 500 Hz, 1 kHz, 2 kHz, 4 kHz, 8 kHz, 16 kHz (±9 dB each)
+- **Bandwidth** slider — controls how wide or narrow each band's effect is (Q 0.3–4.0)
+- Live frequency-response curve
+- Apply / Reset / Flat buttons
+
+**Updates tab** — manage updates:
+- Shows current version, latest release, and last-checked timestamp
+- Toggle for automatic daily update checks (also runs 5 minutes after login)
+- **Check Now** for on-demand checks
+- **Download & Install** — downloads the release zip and runs `setup.sh` in a terminal
+- **Skip This Version** to suppress a specific release
+
+You can also run the app directly:
+```bash
+python3 pixelbook-tools.py
+```
 
 ## Requirements
 
@@ -44,7 +70,8 @@ The stock `linux-firmware` package (as of early 2024) is missing the KBL AVS top
 - Ubuntu 24.04 / Zorin OS 18.x (or any Ubuntu 24.04-based distro)
 - Kernel **6.17** (the AVS topology files in `firmware/` are tested against this kernel)
 - MrChromebox coreboot firmware (standard UEFI boot)
-- GNOME desktop (for keyboard backlight shortcut)
+- GNOME desktop (for keyboard backlight shortcut and app)
+- `python3-gi` with GTK4 bindings (pre-installed on Ubuntu/Zorin)
 
 > **Kernel note:** The included topology `.bin` files are from linux-firmware commit `65d14b1` (July 2024). Newer kernel versions may include updated topology files in the `linux-firmware` package that work out of the box — if audio stops working after a kernel upgrade, try re-running this script.
 
@@ -62,21 +89,25 @@ The script is safe to re-run after reinstalls or kernel upgrades.
 
 ## What the script does
 
-1. Installs `/etc/udev/hwdb.d/61-pixelbook-go-keyboard.hwdb` and reloads the hwdb — keyboard remapping takes effect immediately
-2. Installs `/etc/modprobe.d/snd-avs.conf` — takes effect after reboot
-3. Copies topology `.bin` files to `/lib/firmware/intel/avs/`
-4. Installs UCM configs to `/usr/share/alsa/ucm2/conf.d/avs_max98373/` and `.../avs_da7219/`
-5. Installs WirePlumber rules to `/etc/wireplumber/main.lua.d/`
-6. If WirePlumber is running: restarts it, sets the ALSA mixer state (DSP volume, stereo routing, channel balance), saves ALSA state
-7. Sets GNOME keyboard shortcuts for keyboard backlight (`Alt + Brightness`)
+1. Asks whether to enable automatic update checks
+2. Installs `/etc/udev/hwdb.d/61-pixelbook-go-keyboard.hwdb` and reloads the hwdb — keyboard remapping takes effect immediately
+3. Installs `/etc/modprobe.d/snd-avs.conf` — takes effect after reboot
+4. Copies topology `.bin` files to `/lib/firmware/intel/avs/`
+5. Installs UCM configs to `/usr/share/alsa/ucm2/conf.d/avs_max98373/` and `.../avs_da7219/`
+6. Installs WirePlumber rules to `/etc/wireplumber/main.lua.d/`; if WirePlumber is running, restarts it and sets the ALSA mixer state
+7. Installs the PipeWire EQ config to `~/.config/pipewire/pipewire.conf.d/`; if PipeWire is running, reloads it and sets the Speaker EQ virtual sink as the default output
+8. Sets GNOME keyboard shortcuts for keyboard backlight (`Alt + Brightness`)
+9. Installs the update-checker systemd service and timer to `~/.config/systemd/user/`; enables the timer if auto-updates were chosen
+10. Installs a desktop entry for **Pixelbook Go Tools** to `~/.local/share/applications/`
 
 ## After rebooting
 
-- **Speakers** should work automatically as the default output
-- **Headphones** appear as an output device when plugged in
+- **Speakers** work automatically as the default output (routed through the EQ)
+- **Headphones** appear as an output device when plugged in (no EQ applied)
 - **Headset mic** appears as an input when a headset is plugged in
 - **Internal mic** (DMIC) is always available as an input
 - **HDMI audio** works when an external display is connected (lower priority than speakers)
+- **Pixelbook Go Tools** appears in your applications menu
 
 ## File structure
 
@@ -84,6 +115,9 @@ The script is safe to re-run after reinstalls or kernel upgrades.
 pixelbook-go-linux/
 ├── setup.sh                          — main setup script
 ├── README.md                         — this file
+├── version.txt                       — current version number
+├── pixelbook-tools.py                — GTK4 EQ + update manager app
+├── updater.py                        — GitHub Releases update checker (used by app and systemd)
 ├── firmware/
 │   ├── max98373-tplg.bin             — speaker amp AVS topology
 │   ├── da7219-tplg.bin               — headphone codec AVS topology
@@ -91,6 +125,11 @@ pixelbook-go-linux/
 │   └── hda-8086280b-tplg.bin         — HDMI audio AVS topology
 ├── modprobe/
 │   └── snd-avs.conf                  — DSP driver selection
+├── pipewire/
+│   └── 99-speaker-eq.conf            — 8-band PipeWire filter-chain EQ
+├── systemd/
+│   ├── pixelbook-go-tools-update.service — update checker service (one-shot)
+│   └── pixelbook-go-tools-update.timer   — daily trigger (5 min after boot, then 24 h)
 ├── udev/
 │   └── 61-pixelbook-go-keyboard.hwdb — top-row key remapping
 ├── ucm/

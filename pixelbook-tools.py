@@ -599,6 +599,9 @@ class UpdatesPage(Gtk.Box):
                         break
                     except FileNotFoundError:
                         continue
+                else:
+                    # No terminal found: fall back to the release page
+                    raise RuntimeError("No terminal emulator found")
                 GLib.idle_add(self._install_done, True, None)
             except Exception:
                 GLib.idle_add(self._install_done, False, release_url)

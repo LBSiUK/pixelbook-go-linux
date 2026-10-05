@@ -530,9 +530,10 @@ class UpdatesPage(Gtk.Box):
         updater.check()
         GLib.idle_add(self._on_check_done)
 
-    def _on_check_done(self):
+    def _on_check_done(self, succeeded=True):
         self._check_btn.set_sensitive(True)
-        self._check_status.set_label("")
+        self._check_status.set_label(
+            "" if succeeded else "Could not reach GitHub. Try again later.")
         self._refresh_ui()
         return False
 
@@ -540,8 +541,12 @@ class UpdatesPage(Gtk.Box):
         btn.set_sensitive(False)
         self._check_status.set_label("Checking…")
         def _run():
-            updater.check(force=True)
-            GLib.idle_add(self._on_check_done)
+            # check() falls back to the old cache when the request fails, so
+            # a fresh timestamp is the only sign that the check got through.
+            before = (updater.read_cache() or {}).get("checked_iso")
+            after = (updater.check(force=True) or {}).get("checked_iso")
+            GLib.idle_add(self._on_check_done,
+                          after is not None and after != before)
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_auto_toggle(self, _switch, state):

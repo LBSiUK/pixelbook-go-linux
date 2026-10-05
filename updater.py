@@ -101,10 +101,13 @@ def _fetch():
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.load(resp)
+    body = data.get("body") or ""
+    if len(body) > 600:
+        body = body[:600].rstrip() + "…"
     return {
         "latest_version": data["tag_name"].lstrip("v"),
         "release_url":    data["html_url"],
-        "body":           (data.get("body") or "")[:600],
+        "body":           body,
     }
 
 def check(force=False):

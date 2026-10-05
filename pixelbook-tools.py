@@ -393,6 +393,15 @@ class EQPage(Gtk.Box):
 
 # ── Updates page ───────────────────────────────────────────────────────────────
 
+def _plain_notes(md):
+    """GitHub release notes are Markdown; show them as readable plain text."""
+    out = []
+    for line in md.strip().splitlines():
+        line = re.sub(r"^#+\s*", "", line)               # headings
+        line = re.sub(r"^(\s*)[-*]\s+", r"\1• ", line)    # bullet points
+        out.append(line.replace("**", "").replace("`", ""))
+    return "\n".join(out)
+
 class UpdatesPage(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -504,7 +513,7 @@ class UpdatesPage(Gtk.Box):
             if cache.get("is_update_available"):
                 v = cache["latest_version"]
                 self._update_title.set_label(f"v{v} is available")
-                notes = (cache.get("body") or "").strip()
+                notes = _plain_notes(cache.get("body") or "")
                 self._notes_lbl.set_label(notes if notes else "No release notes.")
                 self._update_box.set_visible(True)
                 self._no_update_lbl.set_visible(False)

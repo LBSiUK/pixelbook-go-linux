@@ -492,6 +492,7 @@ class UpdatesPage(Gtk.Box):
         lbl = Gtk.Label(label=label_text + ":")
         lbl.set_halign(Gtk.Align.START)
         lbl.set_width_chars(20)
+        lbl.set_xalign(0)
         lbl.add_css_class("dim-label")
         row.append(lbl)
         val = Gtk.Label(label=value_text)

@@ -15,6 +15,8 @@ import updater
 CONFIG = os.path.expanduser(
     "~/.config/pipewire/pipewire.conf.d/99-speaker-eq.conf"
 )
+# Where "Download & Install" unpacks new releases before running setup.sh
+RELEASES_DIR = os.path.expanduser("~/.local/share/pixelbook-go-tools/releases")
 Fs = 48000
 
 BANDS = [
@@ -570,12 +572,16 @@ class UpdatesPage(Gtk.Box):
                 tmp_zip = os.path.join(
                     tempfile.gettempdir(), f"pixelbook-go-tools-{v}.zip")
                 urllib.request.urlretrieve(zip_url, tmp_zip)
-                extract_dir = os.path.join(
-                    tempfile.gettempdir(), f"pixelbook-go-tools-{v}")
+                # setup.sh points the app launcher and the update service at
+                # the folder it runs from, so it must outlive a reboot (/tmp
+                # is emptied at boot on Ubuntu).
+                extract_dir = os.path.join(RELEASES_DIR, f"v{v}")
                 if os.path.exists(extract_dir):
                     shutil.rmtree(extract_dir)
+                os.makedirs(extract_dir)
                 with zipfile.ZipFile(tmp_zip) as z:
                     z.extractall(extract_dir)
+                os.remove(tmp_zip)
                 subdirs = [d for d in os.listdir(extract_dir)
                            if os.path.isdir(os.path.join(extract_dir, d))]
                 if not subdirs:

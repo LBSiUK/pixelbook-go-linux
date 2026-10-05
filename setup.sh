@@ -189,7 +189,9 @@ if systemctl --user is-active --quiet pipewire 2>/dev/null; then
     systemctl --user restart pipewire pipewire-pulse
     sleep 3
 
-    EQ_ID=$(wpctl status 2>/dev/null | awk '/Speaker EQ/ { gsub(/\./, "", $2); print $2+0; exit }')
+    # Take the first "NN." on the line: when the EQ is already the default,
+    # wpctl prefixes it with "*", so the ID is not always in the same column.
+    EQ_ID=$(wpctl status 2>/dev/null | awk '/Speaker EQ/ && match($0, /[0-9]+\./) { print substr($0, RSTART, RLENGTH - 1); exit }')
     if [[ -n "$EQ_ID" && "$EQ_ID" -gt 0 ]]; then
         wpctl set-default "$EQ_ID" && ok "Speaker EQ set as default output"
     else

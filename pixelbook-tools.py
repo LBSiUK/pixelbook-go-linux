@@ -15,6 +15,8 @@ import updater
 CONFIG = os.path.expanduser(
     "~/.config/pipewire/pipewire.conf.d/99-speaker-eq.conf"
 )
+# Where "Download & Install" unpacks new releases before running setup.sh
+RELEASES_DIR = os.path.expanduser("~/.local/share/pixelbook-go-tools/releases")
 Fs = 48000
 
 BANDS = [
@@ -391,6 +393,15 @@ class EQPage(Gtk.Box):
 
 # ── Updates page ───────────────────────────────────────────────────────────────
 
+def _plain_notes(md):
+    """GitHub release notes are Markdown; show them as readable plain text."""
+    out = []
+    for line in md.strip().splitlines():
+        line = re.sub(r"^#+\s*", "", line)               # headings
+        line = re.sub(r"^(\s*)[-*]\s+", r"\1• ", line)    # bullet points
+        out.append(line.replace("**", "").replace("`", ""))
+    return "\n".join(out)
+
 class UpdatesPage(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -481,6 +492,7 @@ class UpdatesPage(Gtk.Box):
         lbl = Gtk.Label(label=label_text + ":")
         lbl.set_halign(Gtk.Align.START)
         lbl.set_width_chars(20)
+        lbl.set_xalign(0)
         lbl.add_css_class("dim-label")
         row.append(lbl)
         val = Gtk.Label(label=value_text)
@@ -502,7 +514,7 @@ class UpdatesPage(Gtk.Box):
             if cache.get("is_update_available"):
                 v = cache["latest_version"]
                 self._update_title.set_label(f"v{v} is available")
-                notes = (cache.get("body") or "").strip()
+                notes = _plain_notes(cache.get("body") or "")
                 self._notes_lbl.set_label(notes if notes else "No release notes.")
                 self._update_box.set_visible(True)
                 self._no_update_lbl.set_visible(False)
@@ -519,9 +531,10 @@ class UpdatesPage(Gtk.Box):
         updater.check()
         GLib.idle_add(self._on_check_done)
 
-    def _on_check_done(self):
+    def _on_check_done(self, succeeded=True):
         self._check_btn.set_sensitive(True)
-        self._check_status.set_label("")
+        self._check_status.set_label(
+            "" if succeeded else "Could not reach GitHub. Try again later.")
         self._refresh_ui()
         return False
 
@@ -529,8 +542,12 @@ class UpdatesPage(Gtk.Box):
         btn.set_sensitive(False)
         self._check_status.set_label("Checking…")
         def _run():
-            updater.check(force=True)
-            GLib.idle_add(self._on_check_done)
+            # check() falls back to the old cache when the request fails, so
+            # a fresh timestamp is the only sign that the check got through.
+            before = (updater.read_cache() or {}).get("checked_iso")
+            after = (updater.check(force=True) or {}).get("checked_iso")
+            GLib.idle_add(self._on_check_done,
+                          after is not None and after != before)
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_auto_toggle(self, _switch, state):
@@ -570,12 +587,16 @@ class UpdatesPage(Gtk.Box):
                 tmp_zip = os.path.join(
                     tempfile.gettempdir(), f"pixelbook-go-tools-{v}.zip")
                 urllib.request.urlretrieve(zip_url, tmp_zip)
-                extract_dir = os.path.join(
-                    tempfile.gettempdir(), f"pixelbook-go-tools-{v}")
+                # setup.sh points the app launcher and the update service at
+                # the folder it runs from, so it must outlive a reboot (/tmp
+                # is emptied at boot on Ubuntu).
+                extract_dir = os.path.join(RELEASES_DIR, f"v{v}")
                 if os.path.exists(extract_dir):
                     shutil.rmtree(extract_dir)
+                os.makedirs(extract_dir)
                 with zipfile.ZipFile(tmp_zip) as z:
                     z.extractall(extract_dir)
+                os.remove(tmp_zip)
                 subdirs = [d for d in os.listdir(extract_dir)
                            if os.path.isdir(os.path.join(extract_dir, d))]
                 if not subdirs:
@@ -593,6 +614,9 @@ class UpdatesPage(Gtk.Box):
                         break
                     except FileNotFoundError:
                         continue
+                else:
+                    # No terminal found: fall back to the release page
+                    raise RuntimeError("No terminal emulator found")
                 GLib.idle_add(self._install_done, True, None)
             except Exception:
                 GLib.idle_add(self._install_done, False, release_url)

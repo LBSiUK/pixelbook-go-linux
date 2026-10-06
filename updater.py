@@ -69,9 +69,16 @@ def mark_skipped(version: str):
 
 def read_cache():
     try:
-        return json.load(open(CACHE_FILE))
+        cache = json.load(open(CACHE_FILE))
     except Exception:
         return None
+    # The cache can be up to a day old and may predate an install, so judge
+    # "newer" against the version on disk now rather than the stored flag.
+    latest = cache.get("latest_version") or "0"
+    cache["is_update_available"] = (
+        is_newer(latest, local_version())
+        and latest != read_settings().get("skipped_version"))
+    return cache
 
 def _write_cache(data):
     os.makedirs(SETTINGS_DIR, exist_ok=True)
@@ -101,10 +108,13 @@ def _fetch():
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.load(resp)
+    body = data.get("body") or ""
+    if len(body) > 600:
+        body = body[:600].rstrip() + "…"
     return {
         "latest_version": data["tag_name"].lstrip("v"),
         "release_url":    data["html_url"],
-        "body":           (data.get("body") or "")[:600],
+        "body":           body,
     }
 
 def check(force=False):
